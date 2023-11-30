@@ -5,7 +5,7 @@
 # Set OPENAI_API_KEY to your API key, and then run this from a terminal.
 #
 
-from playwright.sync_api import sync_playwright, TimeoutError
+from playwright.sync_api import sync_playwright
 import time
 import sys
 from sys import argv, exit, platform
@@ -112,7 +112,6 @@ class Crawler:
 		self.page.keyboard.press("Enter")
 
 	def crawl(self):
-		start = time.time()
 		page = self.page
 		page_element_buffer = self.page_element_buffer
 		start = time.time()
@@ -121,23 +120,8 @@ class Crawler:
   
 		page.wait_for_load_state()
   
-		retry_limit = 3
-  
-		for attempt in range(retry_limit):
-			try:
-				device_pixel_ratio = self.page.evaluate("window.devicePixelRatio")
-				page_state_as_text.append(f"Device Pixel Ratio: {device_pixel_ratio}")
-				break  # Break the loop if successful
-			except TimeoutError as e:
-				if attempt < retry_limit - 1:
-					print(f"Retrying due to error: {e}")
-					time.sleep(1)  # Delay before retrying
-				else:
-					print("Maximum retries reached, aborting.")
-					raise  # Re-raise the exception on the last attempt
 
-
-			#	device_pixel_ratio = page.evaluate("window.devicePixelRatio")
+		device_pixel_ratio = page.evaluate("window.devicePixelRatio")
     
 		if platform == "darwin" and device_pixel_ratio == 1:  # lies
 			device_pixel_ratio = 2
@@ -559,7 +543,7 @@ if (__name__ == "__main__"):
 
 		time.sleep(2)
 
-	objective = "Make a reservation for 2 at 7pm at bistro vida in menlo park"
+	objective = "Find flowers in Palo Alto"
 	print("\nWelcome to Weebro.ai! What is your objective?")
 	i = input()
 	if len(i) > 0:
