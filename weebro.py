@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 #
-# weebro.py
+# aircodybot.py
 #
-# Set OPENAI_API_KEY to your API key, and then run this from a terminal.
+# Set OPENAI_API_KEY to your API key
+# Set WEEBRO_ASSISTANT_ID to your OpenAI Assistant ID.
+# Run the script from the terminal
 #
 
 from playwright.sync_api import sync_playwright
@@ -12,7 +14,9 @@ from sys import argv, exit, platform
 from openai import OpenAI  # Updated import
 from playwright.sync_api import sync_playwright
 from playwright_stealth import stealth_sync
+from playwright._impl._errors import Error as PlaywrightError
 import os
+import json
 
 quiet = False
 if len(argv) >= 2:
@@ -43,24 +47,28 @@ class Crawler:
 	def __init__(self):
 		# Start Playwright in a synchronous context
 		self.playwright = sync_playwright().start()
-		
+		storage_state = {}
+		# Check for saved context
+		if os.path.isfile(os.getcwd()+'/storage_state.json'):
+			storage_state_contents = open(os.getcwd()+'/storage_state.json')
+			storage_state = json.load(storage_state_contents)
 		# Launch the browser
 		self.browser = self.playwright.chromium.launch(headless=False,
 			args=[
 			"--disable-notifications",
-			#"--disable-gpu",
-			#"--disable-setuid-sandbox",
-			#"--deterministic-fetch",
-			#"--disable-features=IsolateOrigins,site-per-process",
-			#"--disable-site-isolation-trials",
-			#"--disable-web-security",
-			#"--disable-blink-features=AutomationControlled",
-			#"--disable-dev-shm-usage"
+			# "--disable-gpu",
+			# "--disable-setuid-sandbox",
+			# "--deterministic-fetch",
+			# "--disable-features=IsolateOrigins,site-per-process",
+			# "--disable-site-isolation-trials",
+			# "--disable-web-security",
+			# "--disable-blink-features=AutomationControlled",
+			# "--disable-dev-shm-usage"
 			]
    		)
-
+		self.context = self.browser.new_context(storage_state=storage_state)
 		# Create a new page
-		self.page = self.browser.new_page()
+		self.page = self.context.new_page()
 
 		# Apply stealth
 		# stealth_sync(self.page)
@@ -68,6 +76,10 @@ class Crawler:
 		# Set viewport size
 		# self.page.set_viewport_size({"width": 1280, "height": 1080})
 
+	def exit(self):
+		self.context.storage_state(path=os.getcwd()+"/storage_state.json")
+		self.context.close()
+		self.browser.close()
 
 	def go_to_page(self, url):
 		self.page.goto(url=url if "://" in url else "http://" + url)
@@ -118,11 +130,16 @@ class Crawler:
 
 		page_state_as_text = []
   
-		page.wait_for_load_state()
-  
-
-		device_pixel_ratio = page.evaluate("window.devicePixelRatio")
-    
+		# page.wait_for_navigation()
+		page.wait_for_load_state("load")
+		device_pixel_ratio = 1
+		while True:
+			try:
+				device_pixel_ratio = page.evaluate("window.devicePixelRatio")
+				break
+			except PlaywrightError:
+				print('No context, rerolling in 1s.')
+				time.sleep(1)
 		if platform == "darwin" and device_pixel_ratio == 1:  # lies
 			device_pixel_ratio = 2
 
@@ -448,7 +465,7 @@ class Crawler:
 if (__name__ == "__main__"):
 	_crawler = Crawler()
 	client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))  # Updated OpenAI client initialization
-	assistant_id = "asst_3ATpt3bETgsd024ascqsi87p"
+	assistant_id = os.environ.get("WEEBRO_ASSISTANT_ID") # Provide OpenAI assistant id
 	thread = client.beta.threads.create()
 
 	def print_help():
@@ -486,7 +503,7 @@ if (__name__ == "__main__"):
 				thread_id=thread.id,
 				run_id=run.id
 			)
-            
+
 			# Check if the run has completed or encountered an error
 			if run_status.status in ["completed"]:
 				break
@@ -497,7 +514,7 @@ if (__name__ == "__main__"):
 					error_message += f"\nError Message: {run_status.last_error.message}"
 				print()
 				print(error_message, file=sys.stderr)
-				exit(0)
+				exit(1)
 			elif run_status.status in ["queued", "in_progress", "cancelling"]:
 				time.sleep(0.2)  # Wait for a 0.2 second before checking again
 
@@ -543,7 +560,7 @@ if (__name__ == "__main__"):
 
 		time.sleep(2)
 
-	objective = "Find flowers in Palo Alto"
+	objective = "Make a reservation for 2 at 7pm at bistro vida in menlo park"
 	print("\nWelcome to Weebro.ai! What is your objective?")
 	i = input()
 	if len(i) > 0:
@@ -566,36 +583,35 @@ if (__name__ == "__main__"):
 			if len(gpt_cmd) > 0:
 				print("Suggested command: " + gpt_cmd)
 
-			if gpt_cmd.startswith("GOAL ACHIEVED") or gpt_cmd.startswith("OUTPUT"):
-   
-				command = input()
-				if command == "r" or command == "":
-					run_cmd(gpt_cmd)
-				elif command == "g":
-					url = input("URL:")
-					_crawler.go_to_page(url)
-				elif command == "u":
-					_crawler.scroll("up")
-					time.sleep(1)
-				elif command == "d":
-					_crawler.scroll("down")
-					time.sleep(1)
-				elif command == "c":
-					id = input("id:")
-					_crawler.click(id)
-					time.sleep(1)
-				elif command == "t":
-					id = input("id:")
-					text = input("text:")
-					_crawler.type(id, text)
-					time.sleep(1)
-				elif command == "o":
-					objective = input("Objective:")
-				else:
-					print_help()
-			else:
-					run_cmd(gpt_cmd)
 
+			command = input()
+			if command == "r" or command == "":
+				run_cmd(gpt_cmd)
+			elif command == "g":
+				url = input("URL:")
+				_crawler.go_to_page(url)
+			elif command == "u":
+				_crawler.scroll("up")
+				time.sleep(1)
+			elif command == "d":
+				_crawler.scroll("down")
+				time.sleep(1)
+			elif command == "c":
+				id = input("id:")
+				_crawler.click(id)
+				time.sleep(1)
+			elif command == "t":
+				id = input("id:")
+				text = input("text:")
+				_crawler.type(id, text)
+				time.sleep(1)
+			elif command == "o":
+				objective = input("Objective:")
+			elif command == "q":
+				_crawler.exit()
+				exit(0)
+			else:
+				print_help()
 	except KeyboardInterrupt:
 		print("\n[!] Ctrl+C detected, exiting gracefully.")
 		exit(0)
